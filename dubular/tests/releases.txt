@@ -1,0 +1,2 @@
+1 install http://code.ryandubois.net/misc/releases/dubular-0001.zip
+2 update http://code.ryandubois.net/misc/releases/dubular-0001-01.zip
