@@ -1,0 +1,16 @@
+{application, dubular,
+ [{description, "dub's dubular dubulosity"},
+  {vsn, "0.1.0"},
+  {registered, [ota]},
+  {mod, { dubular_app, []}},
+  {applications,
+   [kernel,
+    stdlib
+   ]},
+  {env,[]},
+  {modules, []},
+
+  {maintainers, []},
+  {licenses, ["Proprietary"]},
+  {links, []}
+ ]}.
