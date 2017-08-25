@@ -168,8 +168,13 @@ perform_update(Version, {Action, Url}) ->
 %% update_check/0
 %% Check against the currently registered version for new update steps to do.
 update_check() ->
-	Updates = reduce_update_list(read_updates("/Users/rdub/Projects/erlang/dubular/tests/releases.txt")),
-	parse_updates(Updates).
+	case download("http://code.ryandubois.net/misc/releases.txt") of
+		{ok, Path} ->
+			Updates = reduce_update_list(read_updates(Path)),
+			parse_updates(Updates);
+		_ ->
+			fail
+	end.
 
 %% do_update_all/1
 %% Performs *all* necessary actions to get up to date..
