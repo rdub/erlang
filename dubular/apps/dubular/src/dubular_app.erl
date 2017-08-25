@@ -16,6 +16,9 @@
 
 start(_StartType, _StartArgs) ->
     dubular_sup:start_link().
+    %% Get shit up to date right off the bat...
+    %ota:perform_all_updates(),
+    %{ok, self()}.
 
 %%--------------------------------------------------------------------
 stop(_State) ->
