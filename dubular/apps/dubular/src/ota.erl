@@ -1,9 +1,10 @@
 -module(ota).
--compile([]).
+-compile([debug_info]).
 -behaviour(gen_server).
 -export([start_link/0]).
 -export([init/1, handle_call/3, handle_cast/2,code_change/3,handle_info/2,terminate/2]).
--export([current_version/0,check_for_update/0,update_check/0]).
+-export([current_version/0,check_for_update/0,update_check/0,perform_all_updates/0]).
+-export([download_monitor/3]).
 
 init([]) ->
 	process_flag(trap_exit, true),
@@ -16,6 +17,9 @@ handle_call(version, _From, State) ->
 handle_call(check_for_update, _From, State) ->
 	{reply, update_check(), State}.
 
+handle_cast(update_all, State) ->
+	NewState = do_update_all(State),
+	{noreply, NewState};
 handle_cast(_, _State) ->
 	{noreply, _State}.
 
@@ -37,6 +41,11 @@ current_version() ->
 %% check_for_update/0
 check_for_update() ->
 	gen_server:call(otad, check_for_update).
+
+%% perform_all_updates/0
+%% asynchronous background update processing
+perform_all_updates() ->
+	gen_server:cast(otad, update_all).
 
 %% read_updates/1
 %% Arg 1 is a list (string), which is expected to be a fully qualified
@@ -101,7 +110,7 @@ parse_updates(UpdateList) when is_list(UpdateList) ->
 %% Arg 2 is the currently executing version
 parse_updates([], ThisVersion) ->
 	io:format("Up to date at version ~p~n", [ThisVersion]),
-	ok;
+	noupdate;
 parse_updates([FirstUpdate], ThisVersion) ->
 	{CurVer, ActionAtom, Url} =  FirstUpdate,
 	if
@@ -126,25 +135,89 @@ parse_updates([FirstUpdate | Rest], ThisVersion) ->
 			perform_update(CurVer, {ActionAtom, Url})
 	end.
 
-perform_update(Version, {Action, Url}) ->
-	io:format("Update step is an \"~s\"~n", [Action]),
-	io:format("Retrieve data from ~s~n", [Url]),
-	case Action of
-		update ->
-			io:format("Doing update step...~n", []);
-		install ->
-			io:format("Doing install step...~n", [])
-	end,
+perform_update(Action, Version, Path) ->
+	io:format("Doing ~s step...~n", [Action]),
+
+
+	%% Do stuff here
+
+
 	os:putenv("DUBULAR_VER", integer_to_list(Version)),
 	case Action of
 		install ->
-			io:format("Install step - rebooting...~n", []);
+			io:format("Install step - rebooting...~n", []),
+			%% Reboot erlang/this process
+			%%init:restart();
+			ok;
 		_ -> false
 	end,
-	ok.
+	updated.
+
+perform_update(Version, {Action, Url}) ->
+	io:format("Update step is an \"~s\"~n", [Action]),
+	io:format("Retrieve data from ~s~n", [Url]),
+	case download(Url) of
+		{ok, Path} ->
+			io:format("~sing using ~s~n", [Action, Path]),
+			perform_update(Action, Version, Path);
+		_ ->
+			io:format("Failed download from ~s~n", [Url]),
+			fail
+	end.
 
 %% update_check/0
 %% Check against the currently registered version for new update steps to do.
 update_check() ->
 	Updates = reduce_update_list(read_updates("/Users/rdub/Projects/erlang/dubular/tests/releases.txt")),
 	parse_updates(Updates).
+
+%% do_update_all/1
+%% Performs *all* necessary actions to get up to date..
+do_update_all(_State) ->
+	case update_check() of
+		updated ->
+			do_update_all(_State);
+		_ ->
+			ok
+	end.
+%	case update_check() of
+
+
+%% download/1
+%% Perform a download of a URL to /tmp
+download(Url) ->
+	Tag = make_ref(),
+	spawn(?MODULE, download_monitor, [self(), Tag, Url]),
+	receive
+		{Tag, {ok, Path}} ->
+			{ok, Path};
+		{Tag, _} ->
+			fail
+	end
+	.
+
+download_monitor(Parent, Tag, Url) ->
+	file:set_cwd("/tmp"),
+	Command = io_lib:format("/usr/bin/curl -O ~s > /dev/null 2>&1", [Url]),
+	ResultPath = filename:join(["/tmp",filename:basename(Url)]),
+	Port = open_port({spawn, Command},
+				[
+					exit_status,
+					{cd, "/tmp"}
+				]
+			),
+	case dl_mon_loop(Port) of
+		ok ->
+			Parent ! {Tag, {ok, ResultPath}};
+		fail ->
+			Parent ! {Tag, fail}
+	end.
+
+dl_mon_loop(Port) ->
+	receive
+		{Port, {exit_status, Status}} ->
+			ok;
+		_ ->
+			port_close(Port),
+			fail
+	end.
